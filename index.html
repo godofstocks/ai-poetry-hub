@@ -1,55 +1,143 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI Poetry Rolling Hub</title>
+    <title>AI Poetry Battle Hub</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; height: 100vh; margin: 0; padding-top: 20px; }
-        .header { width: 100%; max-width: 600px; display: flex; justify-content: space-between; padding: 0 10px; margin-bottom: 10px; }
-        .badge { font-size: 0.7em; background: #333; padding: 5px 10px; border-radius: 15px; }
-        .container { width: 100%; max-width: 600px; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        #display { display: flex; flex-direction: column; gap: 15px; height: 480px; justify-content: flex-end; overflow: hidden; }
-        .line { padding: 15px; border-radius: 10px; background: #2a2a2a; border-left: 4px solid #777; animation: slide 0.5s ease-out forwards; }
-        @keyframes slide { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .name { font-size: 0.8em; font-weight: bold; margin-bottom: 5px; color: #aaa; }
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        
+        /* Control Panel */
+        .controls { margin-bottom: 20px; display: flex; gap: 10px; background: #1e1e1e; padding: 10px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; text-transform: uppercase; font-size: 0.8em; }
+        .btn-start { background: #28a745; color: white; }
+        .btn-stop { background: #dc3545; color: white; }
+        .btn-reset { background: #6c757d; color: white; }
+        button:hover { opacity: 0.8; transform: scale(1.05); }
+
+        .container { width: 100%; max-width: 700px; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        #display { display: flex; flex-direction: column; gap: 12px; height: 500px; overflow: hidden; justify-content: flex-end; padding: 10px; }
+
+        /* Poetry Bubbles */
+        .line { max-width: 80%; padding: 12px 18px; border-radius: 15px; background: #2a2a2a; position: relative; animation: slideIn 0.5s ease-out forwards; line-height: 1.4; }
+        
+        @keyframes slideIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Alignment Logic */
+        .left { align-self: flex-start; border-bottom-left-radius: 2px; border-left: 5px solid; }
+        .right { align-self: flex-end; border-bottom-right-radius: 2px; border-right: 5px solid; text-align: right; }
+
+        .name { font-size: 0.7em; font-weight: 800; margin-bottom: 4px; letter-spacing: 0.5px; }
+        .text { font-size: 1.1em; font-style: italic; color: #fff; }
+        
+        #status-bar { margin-top: 15px; font-size: 0.75em; color: #555; display: flex; gap: 15px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div style="font-weight: bold;">LIVE FEED</div>
-        <div id="sync" class="badge">Syncing...</div>
-    </div>
-    <div class="container"><div id="display"></div></div>
 
-    <script>
-        let displayed = [];
-        let processing = false;
-        const MAX = 6;
+<div class="controls">
+    <button class="btn-start" onclick="control('start')">Start</button>
+    <button class="btn-stop" onclick="control('stop')">Stop</button>
+    <button class="btn-reset" onclick="control('reset')">Reset</button>
+</div>
 
-        async function update() {
-            if (processing) return;
-            try {
-                const res = await fetch('https://ai-poetry-hub-production.up.railway.app/feed');
-                const data = await res.json();
-                const newLines = data.filter(s => !displayed.some(d => d.text === s.text));
+<div class="container">
+    <div id="display"></div>
+</div>
 
-                if (newLines.length > 0) {
-                    processing = true;
-                    for (const line of newLines) {
-                        const div = document.createElement('div');
-                        div.className = 'line';
-                        div.innerHTML = `<div class="name">${line.agent_name}</div><div>${line.text}</div>`;
-                        const disp = document.getElementById('display');
-                        disp.appendChild(div);
-                        displayed.push(line);
-                        if (disp.children.length > MAX) disp.removeChild(disp.children[0]);
-                        await new Promise(r => setTimeout(r, 1000)); // 1s Gap
-                    }
-                    processing = false;
+<div id="status-bar">
+    <div id="sync">Syncing...</div>
+    <div id="hub-mode">Mode: Unknown</div>
+</div>
+
+<script>
+    let displayedCount = 0; 
+    let localHistory = []; 
+    let processing = false;
+    const MAX_LINES = 6;
+    const API_URL = window.location.origin; // Works automatically on Railway
+
+    async function control(action) {
+        try {
+            const res = await fetch(`${API_URL}/control/${action}`, { method: 'POST' });
+            const data = await res.json();
+            if (action === 'reset') {
+                document.getElementById('display').innerHTML = '';
+                localHistory = [];
+                displayedCount = 0;
+            }
+            updateStatusLabel(data.is_running);
+        } catch (e) { console.error("Control error:", e); }
+    }
+
+    async function update() {
+        if (processing) return;
+        try {
+            const res = await fetch(`${API_URL}/state`);
+            const data = await res.json();
+            
+            updateStatusLabel(data.is_running);
+            
+            // Only process lines we haven't rendered yet
+            const newLines = data.posts.slice(localHistory.length);
+
+            if (newLines.length > 0) {
+                processing = true;
+                for (const line of newLines) {
+                    renderLine(line);
+                    localHistory.push(line);
+                    // Requirement: 3 seconds wait between showing lines
+                    await new Promise(r => setTimeout(r, 3000));
                 }
-                document.getElementById('sync').innerText = `LAST SYNC: ${new Date().toLocaleTimeString()}`;
-            } catch (e) { document.getElementById('sync').innerText = "OFFLINE"; }
+                processing = false;
+            }
+            document.getElementById('sync').innerText = `LAST SYNC: ${new Date().toLocaleTimeString()}`;
+        } catch (e) { 
+            document.getElementById('sync').innerText = "OFFLINE";
         }
-        setInterval(update, 2000);
-    </script>
+    }
+
+    function renderLine(line) {
+        const display = document.getElementById('display');
+        const div = document.createElement('div');
+        
+        // Alternate alignment: Even = Left, Odd = Right
+        const isLeft = displayedCount % 2 === 0;
+        div.className = `line ${isLeft ? 'left' : 'right'}`;
+        
+        const agentColor = stringToColor(line.agent_name);
+        div.style.borderLeftColor = isLeft ? agentColor : 'transparent';
+        div.style.borderRightColor = isLeft ? 'transparent' : agentColor;
+
+        div.innerHTML = `
+            <div class="name" style="color: ${agentColor}">${line.agent_name}</div>
+            <div class="text">${line.text}</div>
+        `;
+
+        display.appendChild(div);
+        displayedCount++;
+
+        // Keep only 6 lines on screen
+        if (display.children.length > MAX_LINES) {
+            display.removeChild(display.children[0]);
+        }
+    }
+
+    function updateStatusLabel(isRunning) {
+        const label = document.getElementById('hub-mode');
+        label.innerText = `MODE: ${isRunning ? 'RUNNING' : 'STOPPED'}`;
+        label.style.color = isRunning ? '#28a745' : '#dc3545';
+    }
+
+    function stringToColor(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return `hsl(${Math.abs(hash) % 360}, 70%, 75%)`;
+    }
+
+    // Refresh state every 2 seconds
+    setInterval(update, 2000);
+</script>
 </body>
 </html>
