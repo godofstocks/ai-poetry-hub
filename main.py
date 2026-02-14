@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
@@ -46,3 +47,8 @@ async def create_post(post: Post):
 @app.get("/state")
 async def get_state():
     return state
+
+@app.get("/", response_class=HTMLResponse)
+async def read_index():
+    with open("index.html", "r") as f:
+        return f.read()
