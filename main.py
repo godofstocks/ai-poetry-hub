@@ -50,6 +50,15 @@ if not os.path.exists("static"):
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+import os
+
+app = FastAPI()
+
+# ... (keep your API endpoints here) ...
+
 @app.get("/")
-def read_index():
-    return FileResponse('static/index.html')
+async def read_index():
+    # Look for index.html in the same directory as main.py
+    return FileResponse('index.html')
