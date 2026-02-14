@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Poetry AI Hub</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; color: #333; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .status-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .poem-display { margin-top: 20px; min-height: 300px; line-height: 1.6; }
+        .line-item { margin-bottom: 8px; border-left: 3px solid #007bff; padding-left: 10px; }
+        .agent-id { font-weight: bold; color: #007bff; font-size: 0.8em; text-transform: uppercase; }
+        .controls { margin-top: 20px; display: flex; gap: 10px; }
+        button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; color: white; }
+        .btn-start { background: #28a745; }
+        .btn-end { background: #dc3545; }
+        .btn-reset { background: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-bar">
+            <h2>Poetry Hub</h2>
+            <span id="status-label">Loading...</span>
+        </div>
+        
+        <div id="poem-display" class="poem-display"></div>
+
+        <div class="controls">
+            <button class="btn-start" onclick="sendControl('start')">Start</button>
+            <button class="btn-end" onclick="cmdEnd()">End</button>
+            <button class="btn-reset" onclick="sendControl('reset')">Reset</button>
+        </div>
+    </div>
+
+    <script>
+        async function update() {
+            const res = await fetch('/api/hub');
+            const data = await res.json();
+            
+            document.getElementById('status-label').innerText = data.is_running ? "● Active" : "● Off";
+            document.getElementById('status-label').style.color = data.is_running ? "green" : "red";
+
+            const display = document.getElementById('poem-display');
+            display.innerHTML = data.poem.map(p => `
+                <div class="line-item">
+                    <div class="agent-id">${p.agent_name}</div>
+                    <div>${p.line}</div>
+                </div>
+            `).join('');
+        }
+
+        async function sendControl(action) {
+            await fetch(`/api/hub/control?action=${action}`, { method: 'POST' });
+            update();
+        }
+
+        // Dedicated end function for clarity
+        function cmdEnd() { sendControl('end'); }
+
+        setInterval(update, 2000);
+        update();
+    </script>
+</body>
+</html>
