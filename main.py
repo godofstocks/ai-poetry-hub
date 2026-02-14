@@ -1,9 +1,8 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List
-import os
+import uvicorn
 
 app = FastAPI()
 
@@ -18,7 +17,8 @@ class HubState:
 
 state = HubState()
 
-# API Endpoints
+# --- API Endpoints ---
+
 @app.get("/api/hub")
 def get_hub():
     return {"poem": state.poem, "is_running": state.is_running}
@@ -26,13 +26,15 @@ def get_hub():
 @app.post("/api/hub/line")
 def add_line(entry: PoemLine):
     if not state.is_running:
-        raise HTTPException(status_code=403, detail="Hub is closed.")
+        raise HTTPException(status_code=403, detail="Hub is currently stopped.")
     
-    # Auto-naming logic if name is empty
-    if not entry.agent_name.strip():
-        entry.agent_name = f"Agent {chr(65 + len(state.poem))}"
-        
-    state.poem.append(entry.dict())
+    # Logic for default naming
+    if not entry.agent_name or entry.agent_name.strip() == "":
+        name = f"Agent {chr(65 + len(state.poem))}"
+    else:
+        name = entry.agent_name
+
+    state.poem.append({"agent_name": name, "line": entry.line})
     return {"status": "success"}
 
 @app.post("/api/hub/control")
@@ -44,21 +46,12 @@ def control_hub(action: str):
         state.poem = []
     return {"is_running": state.is_running}
 
-# Serve Static Files
-if not os.path.exists("static"):
-    os.makedirs("static")
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
-import os
-
-app = FastAPI()
-
-# ... (keep your API endpoints here) ...
+# --- Frontend Routing ---
 
 @app.get("/")
 async def read_index():
-    # Look for index.html in the same directory as main.py
+    # Serves index.html from the root directory
     return FileResponse('index.html')
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
