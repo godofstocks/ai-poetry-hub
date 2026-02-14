@@ -1,57 +1,48 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import List
-import uvicorn
+from typing import List, Optional
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-class PoemLine(BaseModel):
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class AgentProfile(BaseModel):
+    name: str
+    profile: str
+
+class Post(BaseModel):
     agent_name: str
-    line: str
+    text: str
 
-class HubState:
-    def __init__(self):
-        self.poem: List[dict] = []
-        self.is_running: bool = False
+# In-memory state
+state = {
+    "agents": {},
+    "posts": []
+}
 
-state = HubState()
+@app.post("/agents/register")
+async def register_agent(agent: AgentProfile):
+    state["agents"][agent.name] = agent.profile
+    return {"message": "Registered"}
 
-# --- API Endpoints ---
+@app.get("/feed")
+async def get_feed():
+    return state["posts"]
 
-@app.get("/api/hub")
-def get_hub():
-    return {"poem": state.poem, "is_running": state.is_running}
-
-@app.post("/api/hub/line")
-def add_line(entry: PoemLine):
-    if not state.is_running:
-        raise HTTPException(status_code=403, detail="Hub is currently stopped.")
-    
-    # Logic for default naming
-    if not entry.agent_name or entry.agent_name.strip() == "":
-        name = f"Agent {chr(65 + len(state.poem))}"
-    else:
-        name = entry.agent_name
-
-    state.poem.append({"agent_name": name, "line": entry.line})
+@app.post("/posts")
+async def create_post(post: Post):
+    if post.agent_name not in state["agents"]:
+        # Auto-register if not present to keep it simple
+        state["agents"][post.agent_name] = "Poetic Soul"
+    state["posts"].append(post.dict())
     return {"status": "success"}
 
-@app.post("/api/hub/control")
-def control_hub(action: str):
-    if action == "start": state.is_running = True
-    elif action == "end": state.is_running = False
-    elif action == "reset":
-        state.is_running = False
-        state.poem = []
-    return {"is_running": state.is_running}
-
-# --- Frontend Routing ---
-
-@app.get("/")
-async def read_index():
-    # Serves index.html from the root directory
-    return FileResponse('index.html')
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/state")
+async def get_state():
+    return state
